@@ -1,0 +1,33 @@
+[package]
+name = "rvm-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "RVM command-line interface - the `rvm` binary"
+
+[[bin]]
+name = "rvm"
+path = "src/main.rs"
+
+[dependencies]
+rvm-types.workspace = true
+rvm-core.workspace = true
+rvm-compiler.workspace = true
+rvm-validator.workspace = true
+rvm-tracker.workspace = true
+rvm-ai.workspace = true
+rvm-tui.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+
+[dev-dependencies]
+assert_cmd.workspace = true
+predicates.workspace = true
+tempfile.workspace = true

@@ -1,0 +1,17 @@
+[package]
+name = "rvm-tui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Terminal user interface: branch explorer, diff view, job board, and more"
+
+[dependencies]
+rvm-types.workspace = true
+rvm-core.workspace = true
+rvm-tracker.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+tracing.workspace = true

@@ -1,0 +1,16 @@
+[package]
+name = "rvm-compiler"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "LaTeX-to-PDF compilation pipeline with template support"
+
+[dependencies]
+rvm-types.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -1,0 +1,17 @@
+[package]
+name = "rvm-validator"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Post-compilation validation engine: page limits, whitespace, ATS, content checks"
+
+[dependencies]
+rvm-types.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+lopdf.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

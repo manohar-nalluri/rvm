@@ -1,0 +1,19 @@
+[package]
+name = "rvm-tracker"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Job application lifecycle tracking: status, deadlines, contacts, analytics"
+
+[dependencies]
+rvm-types.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
