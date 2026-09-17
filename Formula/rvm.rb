@@ -1,7 +1,7 @@
 class Rvm < Formula
   desc "Git-like version control for resumes with LaTeX compilation, AI tailoring, and job tracking"
   homepage "https://github.com/rvm-project/rvm"
-  url "https://github.com/rvm-project/rvm/archive/refs/tags/v0.0.1.tar.gz"
+  url "https://github.com/rvm-project/rvm/archive/refs/tags/v0.0.2.tar.gz"
   # sha256 "UPDATE_WITH_ACTUAL_SHA256_AFTER_RELEASE"
   license "MIT"
 

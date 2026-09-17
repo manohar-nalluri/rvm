@@ -339,12 +339,16 @@ fn test_archive_and_list_archived() {
 
 #[test]
 fn test_version_flag_reports_package_version() {
-    // Pre-release 0.0.1: `rvm --version` must report the workspace package version.
+    // `rvm --version` must report the workspace package version. Derived from
+    // CARGO_PKG_VERSION so a version bump does not require editing this test.
     rvm_cmd()
         .arg("--version")
         .assert()
         .success()
-        .stdout(predicate::str::contains(concat!("rvm ", env!("CARGO_PKG_VERSION"))));
+        .stdout(predicate::str::contains(concat!(
+            "rvm ",
+            env!("CARGO_PKG_VERSION")
+        )));
 }
 
 #[test]
@@ -353,7 +357,10 @@ fn test_version_short_flag() {
         .arg("-V")
         .assert()
         .success()
-        .stdout(predicate::str::contains("0.0.1"));
+        .stdout(predicate::str::contains(concat!(
+            "rvm ",
+            env!("CARGO_PKG_VERSION")
+        )));
 }
 
 // ---------------------------------------------------------------------------
