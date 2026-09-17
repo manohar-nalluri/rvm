@@ -380,6 +380,20 @@ The user's resume uses this template structure:
 | `rvm show <ref>` | Print a past revision (hash, prefix, `HEAD`, or branch) to stdout |
 | `rvm restore <ref>` | Restore a past revision as a new commit (gated on protected branches) |
 
+### Before finalising any resume
+
+Follow `docs/ATS-GUIDE.md` in the RVM repo. At minimum, verify the compiled
+PDF's text layer, because a clean compile does **not** mean a clean parse:
+
+```bash
+pdftotext -layout resume.pdf - | head -40
+```
+
+The name must extract first, the contact line must be plain text with full URLs
+(never icon fonts — they extract as garbage), and each job title must extract on
+the same line as its dates. Also confirm it is exactly one page with no dead
+space at the foot.
+
 ### Recovering a past revision
 
 Every commit keeps its full `.tex` inline, so any revision is recoverable:

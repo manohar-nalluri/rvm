@@ -86,6 +86,19 @@ Reference resolution lives in `rvm_core::commit::resolve`; `restore` reuses the
 unguarded `write_commit` path so the operator is prompted for a password once,
 not twice.
 
+## ATS and Resume Quality
+
+`docs/ATS-GUIDE.md` is the reference for how applicant tracking systems read a
+resume: text-layer extraction, reading order, icon-font and ligature traps,
+bullet construction, keyword strategy, one-page layout, and the exact
+`pdftotext` checks to run before submitting.
+
+`rvm-validator` is a compile-time sanity check, **not** an ATS check. It never
+inspects the text layer, reading order, or keyword relevance, and it currently
+has three defects (a `\begin{tabular*}` false positive, a literal `contact`
+string check, and a bullet check that misses `\resumeItem` templates). See the
+appendix of the guide before trusting a clean run.
+
 ## Build & Test Commands
 ```bash
 cargo build                    # Build all crates
