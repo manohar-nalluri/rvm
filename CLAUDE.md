@@ -65,6 +65,27 @@ Known limitation: this gates *commands*. An agent that rewrites both
 that requires sealing branch data with a keyed HMAC (see the test
 `test_hand_editing_both_config_files_can_unprotect_main`).
 
+## Recovering Past Revisions
+
+Every commit stores its **complete** `snapshot_tex` inline in `commits.json`,
+so any past revision can be recovered byte-exactly. Two commands expose that:
+
+- `rvm show <ref>` — print a past revision's `.tex` to **stdout**; metadata goes
+  to stderr so `rvm show <ref> > old.tex` works cleanly. Accepts `HEAD`, a full
+  hash, an unambiguous prefix (>= 4 hex chars), or a branch name.
+- `rvm restore <ref>` — write that revision back to the working file and record
+  it as a **new** commit. History is never rewritten, so a restore can itself be
+  undone by restoring again. It is a mutation, so branch protection gates it.
+
+`rvm diff <ref> [<ref>]` resolves commits too. It previously accepted only
+branch names despite documenting "branch/commit", so passing a hash silently
+compared *empty* content and printed the entire file as added lines while still
+exiting 0. An unresolvable reference is now a hard error.
+
+Reference resolution lives in `rvm_core::commit::resolve`; `restore` reuses the
+unguarded `write_commit` path so the operator is prompted for a password once,
+not twice.
+
 ## Build & Test Commands
 ```bash
 cargo build                    # Build all crates

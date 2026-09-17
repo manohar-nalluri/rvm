@@ -1,19 +1,19 @@
-use rvm_core::{diff, Workspace};
+use rvm_core::{branch, commit, diff, Workspace};
 
 pub fn execute(a: Option<&str>, b: Option<&str>) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
     let ws = Workspace::discover(&cwd)?;
 
-    let branch_a = a
+    let reference_a = a
         .map(|s| s.to_string())
         .unwrap_or_else(|| ws.current_branch().unwrap_or_default());
 
-    let content_a = load_branch_content(&ws, &branch_a)?;
+    let content_a = load_content(&ws, &reference_a)?;
 
     let content_b = match b {
-        Some(name) => load_branch_content(&ws, name)?,
+        Some(reference) => load_content(&ws, reference)?,
         None => {
-            // Diff current working file against latest commit
+            // Diff the first reference against the working file.
             match ws.find_tex_file() {
                 Ok(tex_path) => std::fs::read_to_string(tex_path)?,
                 Err(_) => String::new(),
@@ -32,11 +32,30 @@ pub fn execute(a: Option<&str>, b: Option<&str>) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn load_branch_content(ws: &Workspace, name: &str) -> anyhow::Result<String> {
-    let snapshot = ws.branches_dir().join(name).join("snapshot.tex");
-    if snapshot.exists() {
-        Ok(std::fs::read_to_string(snapshot)?)
-    } else {
-        Ok(String::new())
+/// Load content for a branch name or a commit reference.
+///
+/// This previously understood only branch names even though the command
+/// documents itself as accepting commits, so passing a hash silently compared
+/// *empty* content against the file and printed the entire resume as added
+/// lines. An unresolvable reference is now a hard error rather than a wrong
+/// answer.
+fn load_content(ws: &Workspace, reference: &str) -> anyhow::Result<String> {
+    if branch::exists(ws, reference) {
+        let snapshot = ws.branches_dir().join(reference).join("snapshot.tex");
+        return Ok(if snapshot.exists() {
+            std::fs::read_to_string(snapshot)?
+        } else {
+            String::new()
+        });
+    }
+
+    let current = ws.current_branch()?;
+    match commit::resolve(ws, &current, reference) {
+        Ok(c) => Ok(c.snapshot_tex),
+        Err(_) => anyhow::bail!(
+            "'{}' is not a branch, nor a commit on branch '{}'",
+            reference,
+            current
+        ),
     }
 }

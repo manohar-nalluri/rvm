@@ -374,6 +374,26 @@ The user's resume uses this template structure:
 | `rvm archive <branch>` | Soft-delete a branch |
 | `rvm branch --protect <name>` | Require the system password to modify a branch |
 | `rvm branch --unprotect <name>` | Remove protection (requires the system password) |
+| `rvm show <ref>` | Print a past revision (hash, prefix, `HEAD`, or branch) to stdout |
+| `rvm restore <ref>` | Restore a past revision as a new commit (gated on protected branches) |
+
+### Recovering a past revision
+
+Every commit keeps its full `.tex` inline, so any revision is recoverable:
+
+```bash
+rvm log                      # find the hash you want
+rvm diff a0fc73f2            # preview: that revision vs the working file
+rvm show a0fc73f2 > old.tex  # export it (metadata goes to stderr)
+rvm restore a0fc73f2         # put it back, as a new commit
+```
+
+`rvm restore` **never rewrites history** — it adds a commit — so a restore is
+itself undoable. On a protected branch it asks the operator for the system
+password, so you cannot restore over `main` yourself either.
+
+There is no command that rewrites or erases history. If a revision needs to be
+discarded permanently, tell the operator; do not edit `commits.json` directly.
 
 ### Protected branches
 

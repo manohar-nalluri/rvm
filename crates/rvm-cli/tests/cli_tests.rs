@@ -625,3 +625,204 @@ fn test_protection_applies_to_workspace_predating_the_feature() {
         .failure()
         .stderr(predicate::str::contains("protected"));
 }
+
+// ---------------------------------------------------------------------------
+// show / restore / diff against commits
+// ---------------------------------------------------------------------------
+
+/// Commit hashes on a branch, in history order.
+///
+/// Parsed with serde rather than by scanning for hex runs: every commit also
+/// stores a `parent` hash, so a naive scan double-counts.
+fn commit_hashes(dir: &Path, branch: &str) -> Vec<String> {
+    let raw = std::fs::read_to_string(commits_json(dir, branch)).unwrap();
+    let parsed: Vec<rvm_types::Commit> = serde_json::from_str(&raw).unwrap();
+    parsed.into_iter().map(|c| c.hash.0).collect()
+}
+
+/// Build a workspace with two commits on an unprotected `main`.
+fn workspace_with_two_revisions(dir: &Path) -> Vec<String> {
+    init_workspace(dir);
+    unprotect_main(dir);
+    std::fs::write(dir.join("resume.tex"), "GOOD CONTENT\n").unwrap();
+    rvm_cmd()
+        .args(["commit", "-m", "good state"])
+        .current_dir(dir)
+        .assert()
+        .success();
+    std::fs::write(dir.join("resume.tex"), "POLLUTED CONTENT\n").unwrap();
+    rvm_cmd()
+        .args(["commit", "-m", "polluted state"])
+        .current_dir(dir)
+        .assert()
+        .success();
+    commit_hashes(dir, "main")
+}
+
+#[test]
+fn test_show_prints_previous_commit_content() {
+    let tmp = TempDir::new().unwrap();
+    let hashes = workspace_with_two_revisions(tmp.path());
+
+    rvm_cmd()
+        .args(["show", &hashes[0][..8]])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("GOOD CONTENT"))
+        .stdout(predicate::str::contains("POLLUTED CONTENT").not());
+}
+
+#[test]
+fn test_show_head_prints_latest_content() {
+    let tmp = TempDir::new().unwrap();
+    workspace_with_two_revisions(tmp.path());
+
+    rvm_cmd()
+        .args(["show", "HEAD"])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("POLLUTED CONTENT"));
+}
+
+#[test]
+fn test_show_unknown_reference_fails() {
+    let tmp = TempDir::new().unwrap();
+    workspace_with_two_revisions(tmp.path());
+
+    rvm_cmd()
+        .args(["show", "deadbeef"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not found"));
+}
+
+#[test]
+fn test_diff_against_a_commit_actually_diffs() {
+    // Regression test: `rvm diff <hash>` used to look for a *branch* of that
+    // name, find nothing, and print the entire resume as added lines while
+    // still exiting 0.
+    let tmp = TempDir::new().unwrap();
+    let hashes = workspace_with_two_revisions(tmp.path());
+
+    let output = rvm_cmd()
+        .args(["diff", &hashes[0][..8]])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let text = String::from_utf8_lossy(&output);
+
+    assert!(
+        !text.contains("@@ -0,0"),
+        "diff reported the whole file as new instead of resolving the commit:\n{text}"
+    );
+    assert!(
+        text.contains("-GOOD CONTENT") && text.contains("+POLLUTED CONTENT"),
+        "expected a real hunk between the two revisions, got:\n{text}"
+    );
+}
+
+#[test]
+fn test_diff_unknown_reference_fails_instead_of_lying() {
+    let tmp = TempDir::new().unwrap();
+    workspace_with_two_revisions(tmp.path());
+
+    rvm_cmd()
+        .args(["diff", "not-a-real-branch-or-commit"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("not a branch"));
+}
+
+#[test]
+fn test_restore_brings_back_an_older_revision() {
+    let tmp = TempDir::new().unwrap();
+    let hashes = workspace_with_two_revisions(tmp.path());
+
+    rvm_cmd()
+        .args(["restore", &hashes[0][..8]])
+        .current_dir(tmp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Restored"))
+        .stdout(predicate::str::contains("History was not rewritten"));
+
+    assert_eq!(
+        std::fs::read_to_string(tmp.path().join("resume.tex")).unwrap(),
+        "GOOD CONTENT\n"
+    );
+    // A forward restore: two originals plus the restore commit.
+    assert_eq!(commit_hashes(tmp.path(), "main").len(), 3);
+    assert_eq!(
+        std::fs::read_to_string(tmp.path().join(".rvm/branches/main/snapshot.tex")).unwrap(),
+        "GOOD CONTENT\n"
+    );
+}
+
+#[test]
+fn test_restore_is_reversible() {
+    let tmp = TempDir::new().unwrap();
+    let hashes = workspace_with_two_revisions(tmp.path());
+
+    rvm_cmd()
+        .args(["restore", &hashes[0][..8]])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    // The polluted revision was never erased, so it can be restored back.
+    rvm_cmd()
+        .args(["restore", &hashes[1][..8]])
+        .current_dir(tmp.path())
+        .assert()
+        .success();
+
+    assert_eq!(
+        std::fs::read_to_string(tmp.path().join("resume.tex")).unwrap(),
+        "POLLUTED CONTENT\n"
+    );
+}
+
+#[test]
+fn test_restore_refuses_when_content_already_matches() {
+    let tmp = TempDir::new().unwrap();
+    workspace_with_two_revisions(tmp.path());
+
+    rvm_cmd()
+        .args(["restore", "HEAD"])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("nothing to restore"));
+
+    assert_eq!(commit_hashes(tmp.path(), "main").len(), 2);
+}
+
+#[test]
+fn test_restore_on_protected_main_is_refused() {
+    let tmp = TempDir::new().unwrap();
+    let hashes = workspace_with_two_revisions(tmp.path());
+
+    // Re-protect main: an agent must not be able to restore either.
+    set_protection(tmp.path(), &["main"]);
+
+    rvm_cmd()
+        .args(["restore", &hashes[0][..8]])
+        .current_dir(tmp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("protected"));
+
+    assert_eq!(
+        std::fs::read_to_string(tmp.path().join("resume.tex")).unwrap(),
+        "POLLUTED CONTENT\n",
+        "a refused restore must not touch the working file"
+    );
+    assert_eq!(commit_hashes(tmp.path(), "main").len(), 2);
+}

@@ -19,6 +19,12 @@ pub enum RvmError {
     #[error("No commits on current branch")]
     NoCommits,
 
+    #[error("Commit '{0}' not found on this branch")]
+    CommitNotFound(String),
+
+    #[error("Commit reference '{reference}' is ambiguous: {matches} commits match")]
+    AmbiguousCommit { reference: String, matches: usize },
+
     #[error("Merge conflict in {0} region(s). Resolve conflicts and commit.")]
     MergeConflict(usize),
 

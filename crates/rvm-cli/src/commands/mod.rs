@@ -8,6 +8,8 @@ pub mod export;
 pub mod init;
 pub mod log;
 pub mod merge;
+pub mod restore;
+pub mod show;
 pub mod status;
 pub mod tui;
 
@@ -70,8 +72,20 @@ pub enum Commands {
     Diff {
         /// First branch/commit (defaults to current)
         a: Option<String>,
-        /// Second branch/commit
+        /// Second branch/commit (defaults to the working file)
         b: Option<String>,
+    },
+
+    /// Print the resume content stored in a previous commit
+    Show {
+        /// Commit hash (full or abbreviated), branch name, or HEAD
+        commit: String,
+    },
+
+    /// Restore the current branch to a previous commit (adds a new commit)
+    Restore {
+        /// Commit hash (full or abbreviated), or HEAD
+        commit: String,
     },
 
     /// Merge a branch into the current branch with conflict resolution
@@ -125,6 +139,8 @@ pub fn execute(cli: Cli) -> anyhow::Result<()> {
         Commands::Checkout { name } => checkout::execute(&name),
         Commands::Commit { message } => commit::execute(&message),
         Commands::Diff { a, b } => diff::execute(a.as_deref(), b.as_deref()),
+        Commands::Show { commit } => show::execute(&commit),
+        Commands::Restore { commit } => restore::execute(&commit),
         Commands::Merge { branch } => merge::execute(&branch),
         Commands::Log => log::execute(),
         Commands::Status => status::execute(),
