@@ -8,6 +8,32 @@ pub struct RvmConfig {
     pub document: DocumentConfig,
     #[serde(default)]
     pub validation: ValidationConfig,
+    #[serde(default)]
+    pub protection: ProtectionConfig,
+}
+
+/// Branch protection settings.
+///
+/// A protected branch refuses any mutating operation (commit, merge into it,
+/// protect/unprotect, archive, delete) until the operator authenticates with
+/// their system password.
+///
+/// `protected_branches` deliberately defaults to `["main"]` rather than to an
+/// empty list. This makes protection *fail closed*: a workspace whose config
+/// predates this field, or whose config file has been deleted outright, still
+/// treats `main` as protected instead of silently unlocking it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProtectionConfig {
+    #[serde(default = "default_protected_branches")]
+    pub protected_branches: Vec<String>,
+}
+
+impl Default for ProtectionConfig {
+    fn default() -> Self {
+        Self {
+            protected_branches: default_protected_branches(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,6 +119,9 @@ fn default_min_font_size() -> u8 {
 }
 fn default_max_retries() -> u8 {
     3
+}
+fn default_protected_branches() -> Vec<String> {
+    vec!["main".to_string()]
 }
 fn default_required_sections() -> Vec<String> {
     vec![

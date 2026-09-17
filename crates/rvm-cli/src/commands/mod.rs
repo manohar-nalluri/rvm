@@ -43,6 +43,14 @@ pub enum Commands {
         /// List archived branches
         #[arg(long)]
         archived: bool,
+
+        /// Protect a branch, so modifying it requires your system password
+        #[arg(long, value_name = "BRANCH")]
+        protect: Option<String>,
+
+        /// Remove protection from a branch (requires your system password)
+        #[arg(long, value_name = "BRANCH")]
+        unprotect: Option<String>,
     },
 
     /// Switch to a branch; updates the .tex file and recompiles PDF
@@ -105,7 +113,15 @@ pub fn execute(cli: Cli) -> anyhow::Result<()> {
             name,
             list,
             archived,
-        } => branch::execute(name.as_deref(), list, archived),
+            protect,
+            unprotect,
+        } => branch::execute(
+            name.as_deref(),
+            list,
+            archived,
+            protect.as_deref(),
+            unprotect.as_deref(),
+        ),
         Commands::Checkout { name } => checkout::execute(&name),
         Commands::Commit { message } => commit::execute(&message),
         Commands::Diff { a, b } => diff::execute(a.as_deref(), b.as_deref()),

@@ -1,5 +1,6 @@
 use rvm_types::{Branch, RvmError, RvmResult};
 
+use crate::auth::Authenticator;
 use crate::workspace::Workspace;
 
 /// List all branch names (non-archived).
@@ -97,10 +98,14 @@ pub fn checkout(ws: &Workspace, name: &str) -> RvmResult<()> {
 }
 
 /// Archive a branch (soft delete).
-pub fn archive(ws: &Workspace, name: &str) -> RvmResult<()> {
+///
+/// Requires authentication when the branch is protected.
+pub fn archive(ws: &Workspace, name: &str, auth: &dyn Authenticator) -> RvmResult<()> {
     if name == "main" {
         return Err(RvmError::Other("Cannot archive the main branch".to_string()));
     }
+
+    crate::guard::ensure_mutable(ws, name, auth)?;
 
     let mut branch = load(ws, name)?;
     branch.metadata.archived = true;
@@ -111,10 +116,14 @@ pub fn archive(ws: &Workspace, name: &str) -> RvmResult<()> {
 }
 
 /// Delete a branch directory entirely.
-pub fn delete(ws: &Workspace, name: &str) -> RvmResult<()> {
+///
+/// Requires authentication when the branch is protected.
+pub fn delete(ws: &Workspace, name: &str, auth: &dyn Authenticator) -> RvmResult<()> {
     if name == "main" {
         return Err(RvmError::Other("Cannot delete the main branch".to_string()));
     }
+
+    crate::guard::ensure_mutable(ws, name, auth)?;
 
     let current = ws.current_branch()?;
     if current == name {
@@ -179,6 +188,7 @@ pub fn list_archived(ws: &Workspace) -> RvmResult<Vec<String>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::{AllowAuthenticator, DenyAuthenticator};
     use tempfile::TempDir;
 
     fn setup_workspace() -> (TempDir, Workspace) {
@@ -216,7 +226,7 @@ mod tests {
     fn test_archive_and_list_archived() {
         let (_tmp, ws) = setup_workspace();
         create(&ws, "old-branch").unwrap();
-        archive(&ws, "old-branch").unwrap();
+        archive(&ws, "old-branch", &AllowAuthenticator).unwrap();
         let archived = list_archived(&ws).unwrap();
         assert!(archived.contains(&"old-branch".to_string()));
         let active = list(&ws).unwrap();
@@ -226,28 +236,55 @@ mod tests {
     #[test]
     fn test_cannot_archive_main() {
         let (_tmp, ws) = setup_workspace();
-        assert!(archive(&ws, "main").is_err());
+        assert!(archive(&ws, "main", &AllowAuthenticator).is_err());
+    }
+
+    #[test]
+    fn test_archive_of_protected_branch_requires_authentication() {
+        let (_tmp, ws) = setup_workspace();
+        create(&ws, "release").unwrap();
+        crate::config::set_protected(&ws, "release", true).unwrap();
+
+        assert!(archive(&ws, "release", &DenyAuthenticator).is_err());
+        // Still active: the refusal happened before any write.
+        assert!(list(&ws).unwrap().contains(&"release".to_string()));
+
+        archive(&ws, "release", &AllowAuthenticator).unwrap();
+        assert!(list_archived(&ws).unwrap().contains(&"release".to_string()));
     }
 
     #[test]
     fn test_delete_branch() {
         let (_tmp, ws) = setup_workspace();
         create(&ws, "deleteme").unwrap();
-        delete(&ws, "deleteme").unwrap();
+        delete(&ws, "deleteme", &AllowAuthenticator).unwrap();
         assert!(!exists(&ws, "deleteme"));
     }
 
     #[test]
     fn test_cannot_delete_main() {
         let (_tmp, ws) = setup_workspace();
-        assert!(delete(&ws, "main").is_err());
+        assert!(delete(&ws, "main", &AllowAuthenticator).is_err());
+    }
+
+    #[test]
+    fn test_delete_of_protected_branch_requires_authentication() {
+        let (_tmp, ws) = setup_workspace();
+        create(&ws, "keepme").unwrap();
+        crate::config::set_protected(&ws, "keepme", true).unwrap();
+
+        assert!(delete(&ws, "keepme", &DenyAuthenticator).is_err());
+        assert!(exists(&ws, "keepme"), "refusal must not delete the branch");
+
+        delete(&ws, "keepme", &AllowAuthenticator).unwrap();
+        assert!(!exists(&ws, "keepme"));
     }
 
     #[test]
     fn test_branch_copies_commits() {
         let (tmp, ws) = setup_workspace();
         std::fs::write(tmp.path().join("resume.tex"), "test content").unwrap();
-        crate::commit::create(&ws, "initial").unwrap();
+        crate::commit::create(&ws, "initial", &AllowAuthenticator).unwrap();
         create(&ws, "feature").unwrap();
         let commits_path = ws.branches_dir().join("feature").join("commits.json");
         assert!(commits_path.exists());

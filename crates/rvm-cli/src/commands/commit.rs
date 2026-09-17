@@ -1,11 +1,15 @@
 use rvm_compiler::Compiler;
-use rvm_core::{commit, Workspace};
+use rvm_core::{commit, SystemAuthenticator, Workspace};
 
 pub fn execute(message: &str) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
     let ws = Workspace::discover(&cwd)?;
     let branch = ws.current_branch()?;
-    let c = commit::create(&ws, message)?;
+
+    // Protected branches require the operator's system password before anything
+    // is written. Unprotected branches never prompt.
+    let auth = SystemAuthenticator::new();
+    let c = commit::create(&ws, message, &auth)?;
     println!("[{}] {} {}", branch, c.hash.short(), message);
 
     let config = ws.load_config()?;

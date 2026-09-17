@@ -1,11 +1,19 @@
 use rvm_types::{Commit, CommitHash, RvmError, RvmResult};
 
+use crate::auth::Authenticator;
 use crate::branch;
 use crate::workspace::Workspace;
 
 /// Create a new commit on the current branch.
-pub fn create(ws: &Workspace, message: &str) -> RvmResult<Commit> {
+///
+/// Fails with an authentication error before touching any state if the current
+/// branch is protected and `auth` does not authenticate.
+pub fn create(ws: &Workspace, message: &str, auth: &dyn Authenticator) -> RvmResult<Commit> {
     let branch_name = ws.current_branch()?;
+
+    // Gate first: nothing is written until the operator is authorised.
+    crate::guard::ensure_mutable(ws, &branch_name, auth)?;
+
     let mut branch_data = branch::load(ws, &branch_name)?;
 
     // Read the current working file (auto-discovers the single .tex file)
@@ -72,4 +80,66 @@ pub fn get(ws: &Workspace, branch_name: &str, hash: &CommitHash) -> RvmResult<Co
 pub fn latest(ws: &Workspace, branch_name: &str) -> RvmResult<Option<Commit>> {
     let history = load_history(ws, branch_name)?;
     Ok(history.into_iter().last())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::auth::{AllowAuthenticator, DenyAuthenticator};
+    use tempfile::TempDir;
+
+    fn setup() -> (TempDir, Workspace) {
+        let tmp = TempDir::new().unwrap();
+        let ws = Workspace::init(tmp.path()).unwrap();
+        std::fs::write(tmp.path().join("resume.tex"), "base content\n").unwrap();
+        (tmp, ws)
+    }
+
+    #[test]
+    fn test_commit_is_refused_on_protected_main() {
+        let (_tmp, ws) = setup();
+
+        let err = create(&ws, "should not land", &DenyAuthenticator).unwrap_err();
+        assert!(matches!(
+            err,
+            RvmError::AuthenticationUnavailable(_) | RvmError::AuthenticationFailed(_)
+        ));
+
+        // Fail closed: no commit, no snapshot, HEAD untouched.
+        assert!(load_history(&ws, "main").unwrap().is_empty());
+        assert!(branch::load(&ws, "main").unwrap().head.is_none());
+        assert!(!ws
+            .branches_dir()
+            .join("main")
+            .join("snapshot.tex")
+            .exists());
+    }
+
+    #[test]
+    fn test_commit_succeeds_on_protected_main_when_authenticated() {
+        let (_tmp, ws) = setup();
+        let commit = create(&ws, "authorised", &AllowAuthenticator).unwrap();
+        assert_eq!(load_history(&ws, "main").unwrap().len(), 1);
+        assert_eq!(branch::load(&ws, "main").unwrap().head, Some(commit.hash));
+    }
+
+    #[test]
+    fn test_commit_on_unprotected_branch_needs_no_authentication() {
+        let (_tmp, ws) = setup();
+        branch::create(&ws, "feature").unwrap();
+        ws.set_head("feature").unwrap();
+
+        // Even a deny-everything authenticator must not block an unprotected
+        // branch; the guard short-circuits before consulting it.
+        create(&ws, "feature work", &DenyAuthenticator).unwrap();
+        assert_eq!(load_history(&ws, "feature").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_unprotecting_main_allows_unauthenticated_commit() {
+        let (_tmp, ws) = setup();
+        crate::config::set_protected(&ws, "main", false).unwrap();
+        create(&ws, "after unprotect", &DenyAuthenticator).unwrap();
+        assert_eq!(load_history(&ws, "main").unwrap().len(), 1);
+    }
 }

@@ -34,6 +34,12 @@ pub enum RvmError {
     #[error("Configuration error: {0}")]
     ConfigError(String),
 
+    #[error("Authentication failed. Branch '{0}' was not modified.")]
+    AuthenticationFailed(String),
+
+    #[error("{0}")]
+    AuthenticationUnavailable(String),
+
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
 

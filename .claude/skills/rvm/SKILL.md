@@ -372,6 +372,25 @@ The user's resume uses this template structure:
 | `rvm status` | Job application dashboard |
 | `rvm merge <branch>` | Merge changes from another branch |
 | `rvm archive <branch>` | Soft-delete a branch |
+| `rvm branch --protect <name>` | Require the system password to modify a branch |
+| `rvm branch --unprotect <name>` | Remove protection (requires the system password) |
+
+### Protected branches
+
+`main` is protected by default. `rvm commit`, `rvm merge` into it,
+`--protect`/`--unprotect`, and `rvm archive` all refuse until the operator
+types their system password at an interactive prompt.
+
+**Never attempt to write to `main`.** Always create a branch first
+(`rvm branch <company>-<role>`, then `rvm checkout <company>-<role>`) and do all
+work there. A refused operation exits non-zero with a "branch ... is protected"
+message and writes nothing, so a failure is safe but pointless to retry.
+`rvm branch --list` marks protected branches with `[protected]`.
+
+There is deliberately no flag, environment variable, or non-interactive mode to
+bypass protection, and no terminal is available to you. Do not search for a
+workaround and do not edit `.rvm/config` or `rvm.toml` to change protection —
+report the limitation to the operator instead.
 
 ## File Structure
 

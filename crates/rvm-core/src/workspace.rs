@@ -147,12 +147,50 @@ impl Workspace {
 
     /// Load the workspace config from rvm.toml.
     pub fn load_config(&self) -> RvmResult<RvmConfig> {
-        let toml_path = self.root.join("rvm.toml");
+        let toml_path = self.toml_config_path();
         if !toml_path.exists() {
             return Ok(RvmConfig::default());
         }
         let content = std::fs::read_to_string(toml_path)?;
         toml::from_str(&content).map_err(|e| RvmError::ConfigError(e.to_string()))
+    }
+
+    /// Path to the user-facing workspace config file.
+    pub fn toml_config_path(&self) -> PathBuf {
+        self.root.join("rvm.toml")
+    }
+
+    /// Path to the workspace-local config copy inside `.rvm/`.
+    ///
+    /// Protection state is mirrored here as well as in `rvm.toml` so that
+    /// clearing one file is not enough to silently unlock a protected branch.
+    pub fn local_config_path(&self) -> PathBuf {
+        self.rvm_dir().join(CONFIG_FILE)
+    }
+
+    /// Load the workspace-local config copy from `.rvm/config`.
+    pub fn load_local_config(&self) -> RvmResult<RvmConfig> {
+        let path = self.local_config_path();
+        if !path.exists() {
+            return Ok(RvmConfig::default());
+        }
+        let content = std::fs::read_to_string(path)?;
+        serde_json::from_str(&content).map_err(|e| RvmError::ConfigError(e.to_string()))
+    }
+
+    /// Write the workspace config to `rvm.toml`.
+    pub fn save_config(&self, config: &RvmConfig) -> RvmResult<()> {
+        let content =
+            toml::to_string_pretty(config).map_err(|e| RvmError::ConfigError(e.to_string()))?;
+        std::fs::write(self.toml_config_path(), content)?;
+        Ok(())
+    }
+
+    /// Write the workspace-local config copy to `.rvm/config`.
+    pub fn save_local_config(&self, config: &RvmConfig) -> RvmResult<()> {
+        let content = serde_json::to_string_pretty(config)?;
+        std::fs::write(self.local_config_path(), content)?;
+        Ok(())
     }
 }
 

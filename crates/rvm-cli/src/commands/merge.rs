@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use rvm_core::{commit, merge, Workspace};
+use rvm_core::{commit, guard, merge, SystemAuthenticator, Workspace};
 use rvm_types::CommitHash;
 
 pub fn execute(branch_name: &str) -> anyhow::Result<()> {
@@ -8,6 +8,12 @@ pub fn execute(branch_name: &str) -> anyhow::Result<()> {
     let ws = Workspace::discover(&cwd)?;
 
     let current = ws.current_branch()?;
+
+    // Merging rewrites the current branch's content, so it is a mutation of the
+    // destination branch and is gated the same way a commit is. Without this an
+    // agent could land its work on a protected branch by merging instead.
+    let auth = SystemAuthenticator::new();
+    guard::ensure_mutable(&ws, &current, &auth)?;
 
     // Load the content from both branches
     let ours_path = ws.branches_dir().join(&current).join("snapshot.tex");

@@ -37,6 +37,34 @@ rvm-types (foundation - no internal deps)
 - **Logging**: Use `tracing` crate (not `println!` in library code)
 - **Tests**: Unit tests colocated in modules, integration tests in `tests/`
 
+## Branch Protection
+
+Protected branches refuse every mutating operation until the operator
+authenticates with their **system password**. This exists so an AI agent
+driving `rvm` cannot damage the base resume.
+
+- `main` is protected by default, including in workspaces created before this
+  feature existed (`ProtectionConfig` defaults to `["main"]`).
+- Gated operations: `commit`, `merge` into the branch, `--protect`,
+  `--unprotect`, `archive`, `delete`. Creating and working on *other* branches
+  is never gated.
+- **Fail closed**: `list_protected` unions `rvm.toml` and `.rvm/config`, and
+  each falls back to `["main"]` when missing. Deleting or clearing one config
+  file cannot unlock a branch.
+- No bypass exists by design: no `--force`, no environment variable, no
+  non-interactive mode, since an agent could reach any of them.
+- Enforcement is centralised in `rvm-core::guard::ensure_mutable`; new mutating
+  operations must call it.
+- Authentication (`rvm-core::auth`) runs `dscl . -authonly <user>`, letting
+  `dscl` prompt with echo disabled, so the password never enters RVM's argv,
+  memory, or environment, and no sudo timestamp is granted. Requires a TTY, so
+  a non-interactive agent is refused outright.
+
+Known limitation: this gates *commands*. An agent that rewrites both
+`.rvm/config` and `rvm.toml` directly can still unprotect a branch. Closing
+that requires sealing branch data with a keyed HMAC (see the test
+`test_hand_editing_both_config_files_can_unprotect_main`).
+
 ## Build & Test Commands
 ```bash
 cargo build                    # Build all crates
