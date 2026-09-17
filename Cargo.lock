@@ -1013,7 +1013,7 @@ checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
 name = "rvm-ai"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "rvm-types",
@@ -1026,7 +1026,7 @@ dependencies = [
 
 [[package]]
 name = "rvm-cli"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1050,7 +1050,7 @@ dependencies = [
 
 [[package]]
 name = "rvm-compiler"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "rvm-types",
@@ -1061,7 +1061,7 @@ dependencies = [
 
 [[package]]
 name = "rvm-core"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1077,7 +1077,7 @@ dependencies = [
 
 [[package]]
 name = "rvm-tracker"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1091,7 +1091,7 @@ dependencies = [
 
 [[package]]
 name = "rvm-tui"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "crossterm",
@@ -1105,7 +1105,7 @@ dependencies = [
 
 [[package]]
 name = "rvm-types"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1119,7 +1119,7 @@ dependencies = [
 
 [[package]]
 name = "rvm-validator"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "anyhow",
  "lopdf",

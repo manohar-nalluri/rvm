@@ -281,3 +281,22 @@ fn test_archive_and_list_archived() {
         .success()
         .stdout(predicate::str::contains("old-branch"));
 }
+
+#[test]
+fn test_version_flag_reports_package_version() {
+    // Pre-release 0.0.1: `rvm --version` must report the workspace package version.
+    rvm_cmd()
+        .arg("--version")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(concat!("rvm ", env!("CARGO_PKG_VERSION"))));
+}
+
+#[test]
+fn test_version_short_flag() {
+    rvm_cmd()
+        .arg("-V")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("0.0.1"));
+}
