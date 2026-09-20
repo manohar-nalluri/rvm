@@ -17,6 +17,23 @@ pub fn create(ws: &Workspace, message: &str, auth: &dyn Authenticator) -> RvmRes
     write_commit(ws, &branch_name, message)
 }
 
+/// Create a commit on `branch_name` from an explicit snapshot.
+///
+/// Used by AI tailoring, which generates a resume that was never written to the
+/// operator's working file and therefore cannot be read back from it. The guard
+/// applies exactly as it does to [`create`], so this cannot be used to land on
+/// a protected branch such as `main`.
+pub fn create_with_content(
+    ws: &Workspace,
+    branch_name: &str,
+    message: &str,
+    tex_content: &str,
+    auth: &dyn Authenticator,
+) -> RvmResult<Commit> {
+    crate::guard::ensure_mutable(ws, branch_name, auth)?;
+    write_commit_content(ws, branch_name, message, tex_content)
+}
+
 /// Minimum length accepted for an abbreviated commit hash.
 pub const MIN_ABBREV: usize = 4;
 
@@ -124,14 +141,30 @@ pub fn restore(
 ///
 /// Callers are responsible for authorisation; see [`create`] and [`restore`].
 fn write_commit(ws: &Workspace, branch_name: &str, message: &str) -> RvmResult<Commit> {
-    let mut branch_data = branch::load(ws, branch_name)?;
-
     // Read the current working file (auto-discovers the single .tex file)
     let tex_path = ws.find_tex_file()?;
     let tex_content = std::fs::read_to_string(&tex_path)?;
+    write_commit_content(ws, branch_name, message, &tex_content)
+}
+
+/// Write a commit from an explicit snapshot instead of the working file.
+///
+/// Both commit paths funnel through here so `commits.json`, `snapshot.tex` and
+/// the branch HEAD can never drift apart.
+fn write_commit_content(
+    ws: &Workspace,
+    branch_name: &str,
+    message: &str,
+    tex_content: &str,
+) -> RvmResult<Commit> {
+    let mut branch_data = branch::load(ws, branch_name)?;
 
     // Create the commit
-    let commit = Commit::new(branch_data.head.clone(), message.to_string(), tex_content.clone());
+    let commit = Commit::new(
+        branch_data.head.clone(),
+        message.to_string(),
+        tex_content.to_string(),
+    );
 
     // Save commit to history
     let commits_path = ws
@@ -147,7 +180,7 @@ fn write_commit(ws: &Workspace, branch_name: &str, message: &str) -> RvmResult<C
         .branches_dir()
         .join(branch_name)
         .join("snapshot.tex");
-    std::fs::write(snapshot_path, &tex_content)?;
+    std::fs::write(snapshot_path, tex_content)?;
 
     // Update branch HEAD
     branch_data.head = Some(commit.hash.clone());

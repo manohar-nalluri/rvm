@@ -1,4 +1,5 @@
 pub mod cover_letter;
+pub mod llm;
 pub mod prep;
 pub mod review;
 pub mod retry;

@@ -14,7 +14,7 @@ This is a **Rust workspace** with 8 independent crates in `crates/`:
 | `rvm-compiler` | LaTeX-to-PDF pipeline | rvm-types |
 | `rvm-validator` | Post-compilation checks | rvm-types, lopdf |
 | `rvm-tracker` | Job application lifecycle | rvm-types, chrono |
-| `rvm-ai` | AI integration (Claude Code skills) | rvm-types |
+| `rvm-ai` | AI integration: agent-CLI client + resume tailoring | rvm-types |
 | `rvm-tui` | Terminal UI (ratatui) | rvm-types, rvm-core, rvm-tracker, ratatui |
 | `rvm-cli` | Binary entry point (clap) | All crates |
 
@@ -99,6 +99,52 @@ has three defects (a `\begin{tabular*}` false positive, a literal `contact`
 string check, and a bullet check that misses `\resumeItem` templates). See the
 appendix of the guide before trusting a clean run.
 
+## AI Tailoring (`rvm ai tailor`)
+
+The one AI operation with a real backend. It drives an external agent CLI
+(`ai.provider = antigravity_cli` → Google's `agy`) rather than an HTTP API, so
+the model credentials never enter RVM's argv, environment or memory.
+
+```
+rvm ai tailor --jd <file> [--jd-text TEXT] [--company C] [--role R]
+    [--branch NAME] [--base main] [--model ID] [--provider NAME]
+    [--timeout-seconds N] [--no-compile] [--no-checkout] [--force] [--json]
+```
+
+The run is: fork a new branch from `--base`, rewrite the resume body for one job
+description, splice it into a byte-exact copy of the operator's preamble, compile
+with tectonic, check the page limit, then commit **on the new branch only**.
+`--base` is only ever read, so a protected `main` cannot be damaged by an
+automated run; the guard in `rvm-core::commit` still applies to the branch that
+is written.
+
+Key decisions:
+
+- **The model is asked for the document *body* only.** `rvm_ai::tailor::Document`
+  splits the source at `\begin{document}`/`\end{document}`; the answer is spliced
+  back in. The ATS notes and package options in the preamble therefore survive
+  byte-for-byte, and a model that returns a whole document anyway is unwrapped by
+  `extract_body`.
+- **Nothing unverified is committed.** `tailor::lint` rejects unbalanced braces, a
+  body under 40% of the source length, a dropped required section, a nested
+  preamble, or a missing `ai.required_terms` entry — and the reason is fed into a
+  repair prompt for the next attempt. The page limit is enforced after compiling.
+- **The prompt forbids tool use, and print mode enforces it.** `agy` in print mode
+  auto-denies tools, so a model that decides to "open the file" returns no output
+  at all; `CliClient` turns that into a clear error instead of silence.
+- **Compilation happens in a scratch dir**, so a draft rejected by the page-limit
+  check never overwrites the operator's own `ManoharNalluri.pdf`. On success it is
+  kept as `.rvm/branches/<branch>/snapshot.pdf`, and copied to the workspace root
+  when the branch is checked out.
+- **`--json` prints one JSON object on stdout** (progress and the `[n/5]` step
+  markers go to stderr), which is what Marionette parses.
+- Branch names are deterministic (`slugify(company, role)`), so a re-run updates
+  the same branch instead of forking duplicates. `--force` deletes and re-forks.
+
+Related: `rvm-core::branch::create_from` (fork from an explicit base without
+moving HEAD) and `rvm-core::commit::create_with_content` (commit an explicit
+snapshot rather than the working file).
+
 ## Build & Test Commands
 ```bash
 cargo build                    # Build all crates
@@ -129,6 +175,7 @@ crates/<name>/
       branch.json      # Branch metadata
       commits.json     # Commit history
       snapshot.tex     # Latest .tex content
+      snapshot.pdf     # Latest compiled PDF (written by `rvm ai tailor`)
       job.json         # Job application metadata
   templates/           # Reusable LaTeX snippets
   skills/              # AI skill definitions (SKILL.md)
@@ -139,5 +186,6 @@ crates/<name>/
 2. **Phase 2**: Validation suite, diff, merge with conflict resolution
 3. **Phase 3**: TUI with ratatui
 4. **Phase 4**: Job tracking per branch
-5. **Phase 5**: AI integration via Claude Code skills
+5. **Phase 5**: AI integration — `rvm ai tailor` is implemented against an
+external agent CLI (`agy`); score/review/cover-letter still print placeholders
 6. **Phase 6**: Polish - packaging, docs, export bundling, plugins

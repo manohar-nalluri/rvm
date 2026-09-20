@@ -43,34 +43,50 @@ pub fn save(ws: &Workspace, branch: &Branch) -> RvmResult<()> {
 
 /// Create a new branch forked from the current branch.
 pub fn create(ws: &Workspace, name: &str) -> RvmResult<Branch> {
+    let current = ws.current_branch()?;
+    create_from(ws, name, &current)
+}
+
+/// Create a new branch forked from an explicit base branch.
+///
+/// Forking does not touch the base branch at all, so this is safe to call with
+/// a protected branch such as `main`. It also does not move HEAD, which matters
+/// for automation: a batch of tailored branches must not disturb whatever the
+/// operator currently has checked out.
+pub fn create_from(ws: &Workspace, name: &str, base: &str) -> RvmResult<Branch> {
     let dir = ws.branches_dir().join(name);
     if dir.exists() {
         return Err(RvmError::BranchAlreadyExists(name.to_string()));
     }
 
-    let current = ws.current_branch()?;
-    let current_branch = load(ws, &current)?;
+    let base_branch = load(ws, base)?;
+    if base_branch.metadata.archived {
+        return Err(RvmError::Other(format!(
+            "Cannot branch from archived branch '{}'.",
+            base
+        )));
+    }
 
-    let mut new_branch = Branch::new(name.to_string(), Some(current.clone()));
-    new_branch.head = current_branch.head.clone();
+    let mut new_branch = Branch::new(name.to_string(), Some(base.to_string()));
+    new_branch.head = base_branch.head.clone();
 
     std::fs::create_dir_all(&dir)?;
 
     // Copy the latest snapshot if it exists
-    let current_snapshot = ws.branches_dir().join(&current).join("snapshot.tex");
-    if current_snapshot.exists() {
-        std::fs::copy(&current_snapshot, dir.join("snapshot.tex"))?;
+    let base_snapshot = ws.branches_dir().join(base).join("snapshot.tex");
+    if base_snapshot.exists() {
+        std::fs::copy(&base_snapshot, dir.join("snapshot.tex"))?;
     }
 
     // Copy commit history so merge can find common ancestors
-    let current_commits = ws.branches_dir().join(&current).join("commits.json");
-    if current_commits.exists() {
-        std::fs::copy(&current_commits, dir.join("commits.json"))?;
+    let base_commits = ws.branches_dir().join(base).join("commits.json");
+    if base_commits.exists() {
+        std::fs::copy(&base_commits, dir.join("commits.json"))?;
     }
 
     save(ws, &new_branch)?;
 
-    tracing::info!("Created branch '{}' from '{}'", name, current);
+    tracing::info!("Created branch '{}' from '{}'", name, base);
     Ok(new_branch)
 }
 

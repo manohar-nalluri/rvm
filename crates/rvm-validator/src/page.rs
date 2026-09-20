@@ -2,12 +2,19 @@ use std::path::Path;
 
 use rvm_types::{Diagnostic, RvmResult};
 
-/// Check if the PDF exceeds the page limit.
-pub fn check_page_count(pdf_path: &Path, limit: usize) -> RvmResult<Option<Diagnostic>> {
+/// Number of pages in a compiled PDF.
+///
+/// Split out from [`check_page_count`] because callers that report a result
+/// (rather than merely gate on it) need the count itself.
+pub fn page_count(pdf_path: &Path) -> RvmResult<usize> {
     let doc = lopdf::Document::load(pdf_path)
         .map_err(|e| rvm_types::RvmError::Other(format!("Failed to read PDF: {}", e)))?;
+    Ok(doc.get_pages().len())
+}
 
-    let page_count = doc.get_pages().len();
+/// Check if the PDF exceeds the page limit.
+pub fn check_page_count(pdf_path: &Path, limit: usize) -> RvmResult<Option<Diagnostic>> {
+    let page_count = page_count(pdf_path)?;
 
     if page_count > limit {
         Ok(Some(
