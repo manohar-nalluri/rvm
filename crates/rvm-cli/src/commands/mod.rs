@@ -46,6 +46,10 @@ pub enum Commands {
         #[arg(long)]
         archived: bool,
 
+        /// Delete a branch (requires your system password if it is protected)
+        #[arg(long, value_name = "BRANCH")]
+        delete: Option<String>,
+
         /// Protect a branch, so modifying it requires your system password
         #[arg(long, value_name = "BRANCH")]
         protect: Option<String>,
@@ -127,12 +131,14 @@ pub fn execute(cli: Cli) -> anyhow::Result<()> {
             name,
             list,
             archived,
+            delete,
             protect,
             unprotect,
         } => branch::execute(
             name.as_deref(),
             list,
             archived,
+            delete.as_deref(),
             protect.as_deref(),
             unprotect.as_deref(),
         ),

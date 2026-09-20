@@ -4,12 +4,24 @@ pub fn execute(
     name: Option<&str>,
     list: bool,
     archived: bool,
+    delete: Option<&str>,
     protect: Option<&str>,
     unprotect: Option<&str>,
 ) -> anyhow::Result<()> {
     let cwd = std::env::current_dir()?;
     let ws = Workspace::discover(&cwd)?;
     let auth = SystemAuthenticator::new();
+
+    // --- Deletion -----------------------------------------------------------
+    //
+    // `branch::delete` refuses the current branch and `main`, and consults the
+    // guard for protected branches, so there is nothing to re-check here.
+    if let Some(target) = delete {
+        require_branch(&ws, target)?;
+        branch::delete(&ws, target, &auth)?;
+        println!("Deleted branch '{}'.", target);
+        return Ok(());
+    }
 
     // --- Protection changes -------------------------------------------------
     //
