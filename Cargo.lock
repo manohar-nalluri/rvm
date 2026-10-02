@@ -1016,6 +1016,7 @@ name = "rvm-ai"
 version = "0.0.4"
 dependencies = [
  "anyhow",
+ "libc",
  "rvm-types",
  "serde",
  "serde_json",

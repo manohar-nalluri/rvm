@@ -10,7 +10,9 @@
 //! batch of fifty resumes.
 
 use std::io::Read;
-use std::process::{Command, Stdio};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
 use rvm_types::{RvmError, RvmResult};
@@ -82,19 +84,29 @@ impl CliClient {
         let argv = self.argv(prompt)?;
         let program = argv[0].clone();
 
-        let mut child = Command::new(&program)
+        let mut command = Command::new(&program);
+        command
             .args(&argv[1..])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| match e.kind() {
-                std::io::ErrorKind::NotFound => RvmError::AiError(format!(
-                    "AI CLI '{program}' not found. Install it, or set ai.cli_path in rvm.toml \
+            .stderr(Stdio::piped());
+
+        // Give the CLI its own process group. An agent CLI is a launcher: it
+        // forks helpers (language servers, in `agy`'s case) that inherit its
+        // pipes. Killing only the direct child leaves those descendants alive,
+        // still holding the write ends, so the drain threads below would block
+        // until the helpers exited on their own — turning a 1s timeout into a
+        // wait for the full, possibly unbounded, lifetime of the call.
+        #[cfg(unix)]
+        command.process_group(0);
+
+        let mut child = command.spawn().map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => RvmError::AiError(format!(
+                "AI CLI '{program}' not found. Install it, or set ai.cli_path in rvm.toml \
                      (or the {CLI_ENV} environment variable)."
-                )),
-                _ => RvmError::AiError(format!("Failed to run '{program}': {e}")),
-            })?;
+            )),
+            _ => RvmError::AiError(format!("Failed to run '{program}': {e}")),
+        })?;
 
         let out_pipe = child
             .stdout
@@ -114,8 +126,7 @@ impl CliClient {
                 Ok(Some(status)) => break status,
                 Ok(None) => {
                     if Instant::now() >= deadline {
-                        let _ = child.kill();
-                        let _ = child.wait();
+                        kill_child(&mut child);
                         let _ = out_thread.join();
                         let _ = err_thread.join();
                         return Err(RvmError::AiError(format!(
@@ -127,7 +138,7 @@ impl CliClient {
                     std::thread::sleep(Duration::from_millis(50));
                 }
                 Err(e) => {
-                    let _ = child.kill();
+                    kill_child(&mut child);
                     return Err(RvmError::AiError(format!(
                         "Failed to wait for '{}': {e}",
                         self.binary
@@ -169,6 +180,26 @@ impl CliClient {
 
 fn default_binary() -> &'static str {
     "agy"
+}
+
+/// Kill the child together with every process in its group, then reap it.
+///
+/// [`Child::kill`] signals only the direct child, which is not enough when the
+/// CLI is a launcher that forked helpers: those inherit the output pipes, so
+/// the drain threads would keep blocking on them even though the child itself
+/// is gone. The group is set up at spawn time via `process_group(0)`.
+fn kill_child(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        // A negative pid addresses the whole process group rather than one
+        // process. SAFETY: `kill` takes no pointers and cannot invalidate
+        // memory; the id comes from a live `Child`.
+        unsafe {
+            libc::kill(-(child.id() as i32), libc::SIGKILL);
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn drain(mut pipe: impl Read) -> String {
