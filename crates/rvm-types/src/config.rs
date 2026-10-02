@@ -101,6 +101,16 @@ pub struct CompilerConfig {
     pub auto_compile: bool,
     #[serde(default)]
     pub watch_mode: bool,
+
+    /// Also keep a `.docx` beside the PDF, rebuilt from the same `.tex` on
+    /// every commit and checkout.
+    ///
+    /// Defaults to true so existing workspaces pick it up without an edit.
+    /// Fails soft: a machine without `pandoc` prints one line of reason and
+    /// still commits, because the PDF is the artifact that gates the work.
+    /// Set `docx = false` for a workspace that must not shell out to pandoc.
+    #[serde(default = "default_true")]
+    pub docx: bool,
 }
 
 impl Default for CompilerConfig {
@@ -109,6 +119,7 @@ impl Default for CompilerConfig {
             engine: default_engine(),
             auto_compile: true,
             watch_mode: false,
+            docx: true,
         }
     }
 }

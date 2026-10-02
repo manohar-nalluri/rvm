@@ -133,6 +133,15 @@ impl Workspace {
         Ok(tex.with_extension("pdf"))
     }
 
+    /// Get the DOCX path corresponding to the workspace's .tex file.
+    ///
+    /// Mirrors [`Self::find_pdf_path`]: one file per branch, overwritten in
+    /// place, so a checkout updates the same document the PDF does.
+    pub fn find_docx_path(&self) -> RvmResult<PathBuf> {
+        let tex = self.find_tex_file()?;
+        Ok(tex.with_extension("docx"))
+    }
+
     /// Read the current branch name from HEAD.
     pub fn current_branch(&self) -> RvmResult<String> {
         let head = std::fs::read_to_string(self.rvm_dir().join(HEAD_FILE))?;
@@ -257,5 +266,15 @@ mod tests {
         std::fs::write(tmp.path().join("johndoe.tex"), "content").unwrap();
         let pdf = ws.find_pdf_path().unwrap();
         assert_eq!(pdf.file_name().unwrap(), "johndoe.pdf");
+    }
+
+    #[test]
+    fn test_find_docx_path_matches_tex() {
+        let tmp = TempDir::new().unwrap();
+        let ws = Workspace::init(tmp.path()).unwrap();
+        std::fs::write(tmp.path().join("johndoe.tex"), "content").unwrap();
+        let docx = ws.find_docx_path().unwrap();
+        assert_eq!(docx.file_name().unwrap(), "johndoe.docx");
+        assert_eq!(docx.parent(), ws.find_pdf_path().unwrap().parent());
     }
 }

@@ -137,6 +137,7 @@ struct TailorReport {
     base: String,
     commit: String,
     pdf: Option<PathBuf>,
+    docx: Option<PathBuf>,
     pages: Option<usize>,
     keywords: Vec<String>,
     attempts: u32,
@@ -154,6 +155,7 @@ struct TailorTrace {
 struct Accepted {
     tex: String,
     pdf: Option<PathBuf>,
+    docx: Option<PathBuf>,
     pages: Option<usize>,
 }
 
@@ -170,6 +172,7 @@ fn tailor_command(args: &TailorArgs) -> anyhow::Result<()> {
                         "base": report.base,
                         "commit": report.commit,
                         "pdf": report.pdf.as_ref().map(|p| p.display().to_string()),
+                        "docx": report.docx.as_ref().map(|p| p.display().to_string()),
                         "pages": report.pages,
                         "keywords": report.keywords,
                         "attempts": report.attempts,
@@ -181,6 +184,9 @@ fn tailor_command(args: &TailorArgs) -> anyhow::Result<()> {
                 println!("Tailored branch: {}", report.branch);
                 if let Some(pdf) = &report.pdf {
                     println!("PDF: {}", pdf.display());
+                }
+                if let Some(docx) = &report.docx {
+                    println!("DOCX: {}", docx.display());
                 }
             }
             Ok(())
@@ -300,6 +306,7 @@ fn run_tailor(args: &TailorArgs, trace: &mut TailorTrace) -> anyhow::Result<Tail
         }
 
         let mut pdf = None;
+        let mut docx = None;
         let mut pages = None;
         if !args.no_compile {
             detail(&format!(
@@ -307,10 +314,11 @@ fn run_tailor(args: &TailorArgs, trace: &mut TailorTrace) -> anyhow::Result<Tail
                 config.compiler.engine, config.document.page_limit
             ));
             match compile_resume(&scratch, &tex, &config) {
-                Ok((path, count)) => {
+                Ok(compiled) => {
                     trace.compiled = true;
-                    pdf = Some(path);
-                    pages = Some(count);
+                    pdf = Some(compiled.pdf);
+                    docx = compiled.docx;
+                    pages = Some(compiled.pages);
                 }
                 Err(err) => {
                     last_error = err.to_string();
@@ -328,7 +336,12 @@ fn run_tailor(args: &TailorArgs, trace: &mut TailorTrace) -> anyhow::Result<Tail
             detail(&format!("compiled OK ({count} page(s))"));
         }
 
-        accepted = Some(Accepted { tex, pdf, pages });
+        accepted = Some(Accepted {
+            tex,
+            pdf,
+            docx,
+            pages,
+        });
         break;
     }
 
@@ -413,6 +426,22 @@ fn run_tailor(args: &TailorArgs, trace: &mut TailorTrace) -> anyhow::Result<Tail
         }
     }
 
+    // The DOCX follows the PDF exactly: same branch snapshot, same working-tree
+    // file, same overwrite-in-place rule. A reader that only looks at one of the
+    // two must never see a stale branch.
+    let mut final_docx = None;
+    if let Some(source_docx) = &accepted.docx {
+        let branch_docx = ws.branches_dir().join(&branch_name).join("snapshot.docx");
+        std::fs::copy(source_docx, &branch_docx)?;
+        if args.no_checkout {
+            final_docx = Some(branch_docx);
+        } else {
+            let dest = ws.find_docx_path()?;
+            std::fs::copy(source_docx, &dest)?;
+            final_docx = Some(dest);
+        }
+    }
+
     let checked_out = !args.no_checkout;
     if checked_out {
         // `checkout` writes the branch snapshot into the working .tex and moves
@@ -425,6 +454,7 @@ fn run_tailor(args: &TailorArgs, trace: &mut TailorTrace) -> anyhow::Result<Tail
         base: args.base.clone(),
         commit: commit.hash.short().to_string(),
         pdf: final_pdf,
+        docx: final_docx,
         pages: accepted.pages,
         keywords,
         attempts: trace.attempts,
@@ -480,16 +510,19 @@ fn resolve_jd(ws: &Workspace, args: &TailorArgs) -> anyhow::Result<(String, Stri
     )
 }
 
+/// What one successful tailoring attempt produced, all inside the scratch dir.
+struct Compiled {
+    pdf: PathBuf,
+    docx: Option<PathBuf>,
+    pages: usize,
+}
+
 /// Compile a candidate resume in a scratch directory and report its page count.
 ///
 /// The scratch directory matters: compiling in the workspace would overwrite the
 /// operator's own `ManoharNalluri.pdf` with a draft that may still be rejected
 /// by the page-limit check.
-fn compile_resume(
-    scratch: &Scratch,
-    tex: &str,
-    config: &RvmConfig,
-) -> anyhow::Result<(PathBuf, usize)> {
+fn compile_resume(scratch: &Scratch, tex: &str, config: &RvmConfig) -> anyhow::Result<Compiled> {
     let tex_path = scratch.path().join("resume.tex");
     std::fs::write(&tex_path, tex)?;
 
@@ -507,7 +540,26 @@ fn compile_resume(
         ));
     }
 
-    Ok((result.pdf_path, pages))
+    // Built here so a committed branch carries the same two artifacts the
+    // operator's working tree gets. Never fatal: the PDF is what the page check
+    // gates, and a machine without pandoc must still be able to tailor.
+    let docx = if config.compiler.docx {
+        match rvm_compiler::docx::convert(&tex_path) {
+            Ok(converted) => Some(converted.docx_path),
+            Err(e) => {
+                detail(&format!("DOCX skipped: {e}"));
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    Ok(Compiled {
+        pdf: result.pdf_path,
+        docx,
+        pages,
+    })
 }
 
 fn commit_message(args: &TailorArgs, jd_text: &str) -> String {

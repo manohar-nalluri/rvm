@@ -16,13 +16,21 @@ pub fn execute(branch_name: Option<&str>) -> anyhow::Result<()> {
 
     let mut exported = Vec::new();
 
-    // Determine the tex/pdf filenames from the workspace's .tex file
-    let (tex_name, pdf_name) = match ws.find_tex_file() {
+    // Determine the tex/pdf/docx filenames from the workspace's .tex file
+    let (tex_name, pdf_name, docx_name) = match ws.find_tex_file() {
         Ok(tex_path) => {
             let stem = tex_path.file_stem().unwrap().to_string_lossy().to_string();
-            (format!("{}.tex", stem), format!("{}.pdf", stem))
+            (
+                format!("{}.tex", stem),
+                format!("{}.pdf", stem),
+                format!("{}.docx", stem),
+            )
         }
-        Err(_) => ("resume.tex".to_string(), "resume.pdf".to_string()),
+        Err(_) => (
+            "resume.tex".to_string(),
+            "resume.pdf".to_string(),
+            "resume.docx".to_string(),
+        ),
     };
 
     // Copy .tex snapshot
@@ -39,6 +47,15 @@ pub fn execute(branch_name: Option<&str>) -> anyhow::Result<()> {
         let dest = export_dir.join(&pdf_name);
         std::fs::copy(&pdf_path, &dest)?;
         exported.push(pdf_name);
+    }
+
+    // Copy .docx if it exists: some portals accept Word and not PDF, which is
+    // the whole reason the DOCX is kept beside the PDF.
+    let docx_path = ws.root().join(&docx_name);
+    if docx_path.exists() {
+        let dest = export_dir.join(&docx_name);
+        std::fs::copy(&docx_path, &dest)?;
+        exported.push(docx_name);
     }
 
     // Copy job.json metadata

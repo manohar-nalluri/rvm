@@ -1,6 +1,7 @@
 pub mod ai;
 pub mod archive;
 pub mod branch;
+pub mod build;
 pub mod checkout;
 pub mod commit;
 pub mod diff;
@@ -59,13 +60,13 @@ pub enum Commands {
         unprotect: Option<String>,
     },
 
-    /// Switch to a branch; updates the .tex file and recompiles PDF
+    /// Switch to a branch; updates the .tex file and rebuilds the PDF and DOCX
     Checkout {
         /// Branch name to switch to
         name: String,
     },
 
-    /// Snapshot the current .tex file with a commit message
+    /// Snapshot the current .tex file, then rebuild its PDF and DOCX
     Commit {
         /// Commit message
         #[arg(short, long)]
@@ -110,7 +111,7 @@ pub enum Commands {
         branch: String,
     },
 
-    /// Bundle resume PDF, cover letter, and references into a zip
+    /// Bundle the branch's resume PDF, DOCX, and metadata into a zip
     Export {
         /// Branch to export (defaults to current)
         branch: Option<String>,

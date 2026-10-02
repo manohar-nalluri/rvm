@@ -11,7 +11,7 @@ This is a **Rust workspace** with 8 independent crates in `crates/`:
 |-------|---------|------------------|
 | `rvm-types` | Shared types, errors, traits | serde, chrono, thiserror |
 | `rvm-core` | Version control: branches, commits, diff, merge | rvm-types, similar |
-| `rvm-compiler` | LaTeX-to-PDF pipeline | rvm-types |
+| `rvm-compiler` | LaTeX-to-PDF (and DOCX) pipeline | rvm-types |
 | `rvm-validator` | Post-compilation checks | rvm-types, lopdf |
 | `rvm-tracker` | Job application lifecycle | rvm-types, chrono |
 | `rvm-ai` | AI integration: agent-CLI client + resume tailoring | rvm-types |
@@ -86,6 +86,37 @@ Reference resolution lives in `rvm_core::commit::resolve`; `restore` reuses the
 unguarded `write_commit` path so the operator is prompted for a password once,
 not twice.
 
+## Compiled Artifacts: PDF and DOCX
+
+`commit`, `restore` and `checkout` all end in `rvm-cli::commands::build::run`,
+which compiles the branch's `.tex` and rebuilds every artifact derived from it.
+The sharing is deliberate: `checkout` used to carry its own copy of the compile
+block, which is exactly how the second artifact would have come to be missing
+after a branch switch.
+
+- `<name>.pdf` — `tectonic` or `latexmk`, via `rvm-compiler`.
+- `<name>.docx` — `pandoc`, via `rvm_compiler::docx`. One file per branch,
+  overwritten in place; never a timestamped sibling.
+
+The DOCX is built from the **`.tex`, not the PDF**. A PDF has no headings, bold
+runs or list items — only glyphs at coordinates — so anything rebuilt from it is
+positioned text, which is the shape an ATS fails to read. Pandoc's LaTeX reader
+expands the resume macros natively: `\section*` becomes a real `Heading1`,
+`\textbf` stays bold, and `\faIcon` is dropped instead of arriving as garbage.
+Verified against the Jake Gutierrez template — 35 non-empty paragraphs with
+headings and bold runs intact.
+
+Two decisions worth keeping:
+
+- **Never fatal.** A commit whose PDF compiled has succeeded, so a machine
+  without pandoc prints `DOCX skipped: ...` and still commits. Only the PDF
+  gates the work.
+- **On by default**, as `[compiler] docx = true`, so existing workspaces pick it
+  up without an edit. `docx = false` stops the shell-out entirely.
+
+`RVM_PANDOC` overrides the converter binary — the same escape hatch `RVM_AI_CLI`
+gives the AI client — which is what lets the tests run without pandoc installed.
+
 ## ATS and Resume Quality
 
 `docs/ATS-GUIDE.md` is the reference for how applicant tracking systems read a
@@ -134,8 +165,10 @@ Key decisions:
   at all; `CliClient` turns that into a clear error instead of silence.
 - **Compilation happens in a scratch dir**, so a draft rejected by the page-limit
   check never overwrites the operator's own `ManoharNalluri.pdf`. On success it is
-  kept as `.rvm/branches/<branch>/snapshot.pdf`, and copied to the workspace root
-  when the branch is checked out.
+  kept as `.rvm/branches/<branch>/snapshot.pdf` (and `snapshot.docx`), and copied
+  to the workspace root when the branch is checked out. The DOCX follows the PDF
+  exactly — same snapshot, same working-tree path, same overwrite rule — so a
+  reader that looks at only one of the two never sees a stale branch.
 - **`--json` prints one JSON object on stdout** (progress and the `[n/5]` step
   markers go to stderr), which is what Marionette parses.
 - Branch names are deterministic (`slugify(company, role)`), so a re-run updates
@@ -176,6 +209,7 @@ crates/<name>/
       commits.json     # Commit history
       snapshot.tex     # Latest .tex content
       snapshot.pdf     # Latest compiled PDF (written by `rvm ai tailor`)
+      snapshot.docx    # Latest Word version of the same revision
       job.json         # Job application metadata
   templates/           # Reusable LaTeX snippets
   skills/              # AI skill definitions (SKILL.md)

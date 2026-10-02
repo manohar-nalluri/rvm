@@ -28,5 +28,5 @@ pub fn execute(reference: &str) -> anyhow::Result<()> {
         new_commit.parent.as_ref().map(|p| p.short()).unwrap_or("HEAD")
     );
 
-    crate::commands::commit::compile_and_validate(&ws)
+    crate::commands::build::run(&ws, true)
 }
